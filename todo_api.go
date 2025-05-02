@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	//slogctx "github.com/veqryn/slog-context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,21 @@ var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: t
 var customHandler = &ContextHandler{Handler: baseHandler}
 var logger = slog.New(customHandler)
 
+const (
+	xRequestId = "X-Request-ID"
+)
+
+func TracingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestId := r.Header.Get(xRequestId)
+		if requestId == "" {
+			requestId = uuid.NewString()
+		}
+		ctx := context.WithValue(r.Context(), xRequestId, requestId)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func init() {
 	slog.SetDefault(logger)
 }
@@ -26,24 +42,13 @@ type ContextHandler struct {
 }
 
 func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
-	if requestID, ok := ctx.Value("request_id").(string); ok {
-		r.AddAttrs(slog.String("request_id", requestID))
+	if traceid, ok := ctx.Value(xRequestId).(string); ok {
+		r.AddAttrs(slog.String("trace_id", traceid))
 	}
 	if userID, ok := ctx.Value("user_id").(string); ok {
 		r.AddAttrs(slog.String("user_id", userID))
 	}
 	return h.Handler.Handle(ctx, r)
-}
-
-// create a dummy context
-func dummyContext() context.Context {
-	request_id := uuid.NewString()
-	user_id := "edz197"
-
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, "request_id", request_id)
-	ctx = context.WithValue(ctx, "user_id", user_id)
-	return ctx
 }
 
 type todoHandler struct{}
@@ -58,7 +63,8 @@ type deleteBody struct {
 	task string
 }
 
-func (h *todoHandler) Get(w http.ResponseWriter, r *http.Request) {
+var getTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	logger.InfoContext(r.Context(), "get request received")
 	todolist := list.SortedMap()
 	j, err := json.Marshal(todolist)
 	if err != nil {
@@ -67,9 +73,11 @@ func (h *todoHandler) Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(j)
-}
+	return
+})
 
-func (h *todoHandler) Post(w http.ResponseWriter, r *http.Request) {
+var postTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	logger.InfoContext(r.Context(), "post request received")
 	var pb = make(map[string]string)
 	err := json.NewDecoder(r.Body).Decode(&pb)
 	if err != nil {
@@ -84,11 +92,13 @@ func (h *todoHandler) Post(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	} else {
-		h.Get(w, r)
+		getTodo(w, r)
 	}
-}
+	return
+})
 
-func (h *todoHandler) Put(w http.ResponseWriter, r *http.Request) {
+var putTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	logger.InfoContext(r.Context(), "put request received")
 	var pb = make(map[string]string)
 	err := json.NewDecoder(r.Body).Decode(&pb)
 	if err != nil {
@@ -100,21 +110,23 @@ func (h *todoHandler) Put(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if item == "" || replaceWith == "" {
 		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		err := list.UpdateEntry(item, replaceWith)
-		if err != nil {
-			if errors.Is(err, list.NotFoundErr) {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		} else {
-			h.Get(w, r)
-		}
+		return
 	}
-}
+	err = list.UpdateEntry(item, replaceWith)
+	if err != nil {
+		if errors.Is(err, list.NotFoundErr) {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	} else {
+		getTodo(w, r)
+	}
+	return
+})
 
-func (h *todoHandler) Delete(w http.ResponseWriter, r *http.Request) {
+var deleteTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	logger.InfoContext(r.Context(), "delete request received")
 	var db = make(map[string]string)
 	err := json.NewDecoder(r.Body).Decode(&db)
 	if err != nil {
@@ -128,25 +140,24 @@ func (h *todoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	} else {
-		h.Get(w, r)
+		getTodo(w, r)
 	}
-
-}
+	return
+})
 
 func main() {
-	ctx := dummyContext()
+	ctx := context.Background()
 	if err := list.LoadEntries(); err != nil {
 		logger.ErrorContext(ctx, "Error Loading todo List", "details", err)
 		panic(errors.New(fmt.Sprintf("Error Loading todo List %v", err)))
 	}
 
 	mux := http.NewServeMux()
-	h := todoHandler{}
 
-	mux.HandleFunc("GET /todo", h.Get)
-	mux.HandleFunc("POST /todo", h.Post)
-	mux.HandleFunc("PUT /todo", h.Put)
-	mux.HandleFunc("DELETE /todo", h.Delete)
+	mux.Handle("GET /todo", TracingMiddleware(getTodo))
+	mux.Handle("POST /todo", TracingMiddleware(postTodo))
+	mux.Handle("PUT /todo", TracingMiddleware(putTodo))
+	mux.Handle("DELETE /todo", TracingMiddleware(deleteTodo))
 	fmt.Printf("\nListening on port 8000\n")
 	if err := http.ListenAndServe(":8000", mux); err != nil {
 		fmt.Printf("error running http server: %s\n", err)
