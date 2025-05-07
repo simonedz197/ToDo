@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	list "tut2/todo/todolist"
 	"strings"
+	list "tut2/todo/todolist"
 )
 
 var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
@@ -20,12 +20,13 @@ var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: t
 var customHandler = &ContextHandler{Handler: baseHandler}
 var logger = slog.New(customHandler)
 
-type RequestData struct {
+type RequestJob struct {
 	Writer  http.ResponseWriter
 	Request *http.Request
+	done    chan bool
 }
 
-var Queue = make(chan RequestData)
+var Queue = make(chan RequestJob)
 
 const (
 	xRequestId = "X-Request-ID"
@@ -65,75 +66,72 @@ type todoPageData struct {
 	Items     []list.ToDoItem
 }
 
-var postTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	logger.InfoContext(r.Context(), "post request received")
+func postRequest(job RequestJob) {
 	var pb = make(map[string]string)
-	err := json.NewDecoder(r.Body).Decode(&pb)
+	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
+		job.done <- true
+		return
 	}
 	err = list.AddEntry(pb["item"])
 	if err != nil {
+		job.Writer.WriteHeader(http.StatusInternalServerError)
 		if errors.Is(err, list.AlreadyExistsErr) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Already Exists"))
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			job.Writer.Write([]byte("Already Exists"))
 		}
-	} else {
-		serveTemplate(w, r)
 	}
+	job.done <- true
 	return
-})
+}
 
-var putTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	logger.InfoContext(r.Context(), "put request received")
+func putRequest(job RequestJob) {
 	var pb = make(map[string]string)
-	err := json.NewDecoder(r.Body).Decode(&pb)
+	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
+		job.done <- true
 	}
 	item := pb["item"]
 	replaceWith := pb["replacewith"]
-	w.Header().Set("Content-Type", "application/json")
+	job.Writer.Header().Set("Content-Type", "application/json")
 	if item == "" || replaceWith == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		job.Writer.WriteHeader(http.StatusBadRequest)
+		job.done <- true
 		return
 	}
 	err = list.UpdateEntry(item, replaceWith)
 	if err != nil {
+		job.Writer.WriteHeader(http.StatusInternalServerError)
 		if errors.Is(err, list.NotFoundErr) {
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			job.Writer.WriteHeader(http.StatusNotFound)
 		}
-	} else {
-		serveTemplate(w, r)
 	}
+	job.done <- true
 	return
-})
+}
 
-var deleteTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	logger.InfoContext(r.Context(), "delete request received")
+func deleteRequest(job RequestJob) {
 	var db = make(map[string]string)
-	err := json.NewDecoder(r.Body).Decode(&db)
+	err := json.NewDecoder(job.Request.Body).Decode(&db)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
+		job.done <- true
+		return
 	}
 	err = list.DeleteEntry(db["item"])
 	if err != nil {
+		job.Writer.WriteHeader(http.StatusInternalServerError)
 		if errors.Is(err, list.NotFoundErr) {
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			job.Writer.WriteHeader(http.StatusNotFound)
 		}
-	} else {
-		serveTemplate(w, r)
 	}
+	job.done <- true
 	return
-})
+}
 
-var serveTemplate = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func serveTemplate(job RequestJob) {
+	logger.InfoContext(job.Request.Context(), "Serving Template")
 	lp := filepath.Join("dynamic", "layout.html")
 	data := todoPageData{
 		PageTitle: "TO DO LIST",
@@ -142,15 +140,17 @@ var serveTemplate = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request
 
 	tmpl, err := template.New("layout.html").ParseFiles(lp)
 	if err != nil {
-		logger.ErrorContext(r.Context(), "error parsing list template", err)
+		logger.ErrorContext(job.Request.Context(), "error parsing list template", err)
+		job.done <- true
 		return
 	}
-	err = tmpl.Execute(w, data)
+	err = tmpl.Execute(job.Writer, data)
 	if err != nil {
-		logger.ErrorContext(r.Context(), "error executing list template", err)
+		logger.ErrorContext(job.Request.Context(), "error executing list template", err)
 	}
+	job.done <- true
 	return
-})
+}
 
 func ProcessQueue() {
 	for v := range Queue {
@@ -159,26 +159,25 @@ func ProcessQueue() {
 		logger.InfoContext(v.Request.Context(), requestlog)
 		switch strings.ToUpper(v.Request.Method) {
 		case "POST":
+			postRequest(v)
 		case "PUT":
+			putRequest(v)
 		case "DELETE":
+			deleteRequest(v)
 		case "GET":
-			serveTemplate(Queue.Writer, Queue.Request)
+			serveTemplate(v)
 		default:
-			Data.Writer.WriteHeader(http.StatusMethodNotAllowed)
+			v.Writer.WriteHeader(http.StatusMethodNotAllowed)
+			v.done <- true
 		}
 	}
 }
 
 var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	go func() {
-		data:=RequestData{
-			Writer = w,
-			Request = r
-		}
-		Queue<-data
-	}
+	data := RequestJob{w, r, make(chan bool)}
+	Queue <- data
+	<-data.done
 })
-
 
 func main() {
 	ctx := context.Background()
@@ -186,6 +185,8 @@ func main() {
 		logger.ErrorContext(ctx, "Error Loading todo List", "details", err)
 		panic(errors.New(fmt.Sprintf("Error Loading todo List %v", err)))
 	}
+
+	go ProcessQueue()
 
 	mux := http.NewServeMux()
 	fs := http.FileServer(http.Dir("./static"))

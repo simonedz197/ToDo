@@ -85,3 +85,29 @@ time=2025-05-06T15:05:29.078+01:00 level=ERROR source=/Users/simon.edmundson/go/
 time=2025-05-06T15:05:29.516+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:175 msg="error executing list template" !BADKEY="template: \"layout\" is an incomplete or empty template" trace_id=e4853700-02a4-46b9-91fa-7579d703359f
 time=2025-05-06T15:07:12.434+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:175 msg="error executing list template" !BADKEY="template: layout.html:4:8: executing \"layout.html\" at <.>: range can't iterate over {TO DO LIST [{1 weed garden} {2 wash car} {3 brush teeth} {4 call dentist to make appointment} {5 play golf} {6 brush hair} {7 call doctor to make appointment}]}" trace_id=04567b6d-4ead-42fe-a6dd-e8d78921e4be
 time=2025-05-06T15:11:12.500+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:61 msg="post request received" trace_id=e714457b-416e-48b8-a941-0e51f1fbedaa
+time=2025-05-07T09:08:57.810+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:174 msg="Process Request" trace_id=9b4f754e-d823-403c-a876-a66792b051e8
+time=2025-05-07T09:09:45.486+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:174 msg="Process Request" trace_id=88d648e4-9ae0-4c50-af40-9544b37b231d
+time=2025-05-07T09:09:45.487+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:160 msg="Process GET Request" trace_id=88d648e4-9ae0-4c50-af40-9544b37b231d
+time=2025-05-07T09:09:45.488+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:150 msg="error executing list template" !BADKEY="http: wrote more than the declared Content-Length" trace_id=88d648e4-9ae0-4c50-af40-9544b37b231d
+time=2025-05-07T09:11:27.223+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:175 msg="Process Request" trace_id=3f861254-d710-4787-9298-7a70bac94b9b
+time=2025-05-07T09:11:27.225+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:161 msg="Process GET Request" trace_id=3f861254-d710-4787-9298-7a70bac94b9b
+time=2025-05-07T09:11:27.225+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:137 msg="Serving Template" trace_id=3f861254-d710-4787-9298-7a70bac94b9b
+time=2025-05-07T09:11:27.226+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:151 msg="error executing list template" !BADKEY="http: wrote more than the declared Content-Length" trace_id=3f861254-d710-4787-9298-7a70bac94b9b
+time=2025-05-07T09:16:10.717+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:177 msg="Process Request" trace_id=4bf6ab34-daf7-4686-b017-07bc88ea0322
+time=2025-05-07T09:16:10.718+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:162 msg="Process GET Request" trace_id=4bf6ab34-daf7-4686-b017-07bc88ea0322
+time=2025-05-07T09:16:10.718+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:138 msg="Serving Template" trace_id=4bf6ab34-daf7-4686-b017-07bc88ea0322
+time=2025-05-07T09:21:35.658+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:172 msg="Process Request" trace_id=f6bff102-6602-4b0c-8bd1-b0afd82c0841
+time=2025-05-07T09:21:35.662+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:157 msg="Process GET Request" trace_id=f6bff102-6602-4b0c-8bd1-b0afd82c0841
+time=2025-05-07T09:21:35.662+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:132 msg="Serving Template" trace_id=f6bff102-6602-4b0c-8bd1-b0afd82c0841
+time=2025-05-07T09:22:35.435+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:173 msg="Process Request" trace_id=654c2353-3a88-48c8-ad05-864717356dd5
+time=2025-05-07T09:22:35.436+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:158 msg="Process GET Request" trace_id=654c2353-3a88-48c8-ad05-864717356dd5
+time=2025-05-07T09:22:35.436+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:132 msg="Serving Template" trace_id=654c2353-3a88-48c8-ad05-864717356dd5
+time=2025-05-07T09:25:52.209+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:174 msg="Process Request" trace_id=8a431dfd-6a65-46e2-b75e-b61cfa8979f7
+time=2025-05-07T09:25:52.210+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:158 msg="Process POST Request" trace_id=8a431dfd-6a65-46e2-b75e-b61cfa8979f7
+time=2025-05-07T09:25:57.551+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:174 msg="Process Request" trace_id=26339526-1b11-4d9a-8bd3-d03fa176fdc9
+time=2025-05-07T09:25:57.551+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:158 msg="Process GET Request" trace_id=26339526-1b11-4d9a-8bd3-d03fa176fdc9
+time=2025-05-07T09:25:57.551+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:132 msg="Serving Template" trace_id=26339526-1b11-4d9a-8bd3-d03fa176fdc9
+time=2025-05-07T09:36:29.629+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=dde2dccf-18a3-416a-9db2-fb0459441c92
+time=2025-05-07T09:36:29.630+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=dde2dccf-18a3-416a-9db2-fb0459441c92
+time=2025-05-07T09:36:30.944+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=8046e93e-8513-4339-96ad-748d9a91e917
+time=2025-05-07T09:36:30.944+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=8046e93e-8513-4339-96ad-748d9a91e917
