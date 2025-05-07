@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	list "tut2/todo/todolist"
+	"strings"
 )
 
 var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
@@ -156,9 +157,28 @@ func ProcessQueue() {
 		// get method and log request
 		requestlog := fmt.Sprintf("Process %s Request", v.Request.Method)
 		logger.InfoContext(v.Request.Context(), requestlog)
-
+		switch strings.ToUpper(v.Request.Method) {
+		case "POST":
+		case "PUT":
+		case "DELETE":
+		case "GET":
+			serveTemplate(Queue.Writer, Queue.Request)
+		default:
+			Data.Writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	}
 }
+
+var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		data:=RequestData{
+			Writer = w,
+			Request = r
+		}
+		Queue<-data
+	}
+})
+
 
 func main() {
 	ctx := context.Background()
@@ -170,10 +190,7 @@ func main() {
 	mux := http.NewServeMux()
 	fs := http.FileServer(http.Dir("./static"))
 
-	mux.Handle("GET /todo", TracingMiddleware(serveTemplate))
-	mux.Handle("POST /todo", TracingMiddleware(postTodo))
-	mux.Handle("PUT /todo", TracingMiddleware(putTodo))
-	mux.Handle("DELETE /todo", TracingMiddleware(deleteTodo))
+	mux.Handle("/todo", TracingMiddleware(ProcessRequest))
 	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
 	fmt.Printf("\nListening on port 8000\n")
 	if err := http.ListenAndServe(":8000", mux); err != nil {
