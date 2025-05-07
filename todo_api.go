@@ -7,157 +7,168 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"html/template"
-	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 	list "tut2/todo/todolist"
 )
-
-var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: true})
-var customHandler = &ContextHandler{Handler: baseHandler}
-var logger = slog.New(customHandler)
 
 type RequestJob struct {
 	Writer  http.ResponseWriter
 	Request *http.Request
-	done    chan bool
+	done    chan struct{}
 }
 
 var Queue = make(chan RequestJob)
-
-const (
-	xRequestId = "X-Request-ID"
-)
-
-func TracingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestId := r.Header.Get(xRequestId)
-		if requestId == "" {
-			requestId = uuid.NewString()
-		}
-		ctx := context.WithValue(r.Context(), xRequestId, requestId)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func init() {
-	slog.SetDefault(logger)
-}
-
-type ContextHandler struct {
-	slog.Handler
-}
-
-func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
-	if traceid, ok := ctx.Value(xRequestId).(string); ok {
-		r.AddAttrs(slog.String("trace_id", traceid))
-	}
-	if userID, ok := ctx.Value("user_id").(string); ok {
-		r.AddAttrs(slog.String("user_id", userID))
-	}
-	return h.Handler.Handle(ctx, r)
-}
 
 type todoPageData struct {
 	PageTitle string
 	Items     []list.ToDoItem
 }
 
+func sortedArray(maptosort map[int]string) []list.ToDoItem {
+	returnVal := make([]list.ToDoItem, 0)
+	keys := make([]int, 0, len(maptosort))
+	for idx, _ := range maptosort {
+		keys = append(keys, idx)
+	}
+	sort.Ints(keys)
+	index := 1
+	for _, v := range keys {
+		item := list.ToDoItem{index, maptosort[v]}
+		returnVal = append(returnVal, item)
+		index += 1
+	}
+	return returnVal
+}
+
+func TracingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestId := r.Header.Get("X-Request-ID")
+		if requestId == "" {
+			requestId = uuid.NewString()
+		}
+		ctx := context.WithValue(r.Context(), "X-Request-ID", requestId)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func postRequest(job RequestJob) {
+	defer close(job.done)
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
-		job.done <- true
 		return
 	}
-	err = list.AddEntry(pb["item"])
-	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
-		if errors.Is(err, list.AlreadyExistsErr) {
-			job.Writer.Write([]byte("Already Exists"))
-		} else {
-			job.Writer.WriteHeader(http.StatusInternalServerError)
+	data := list.DataStoreJob{job.Request.Context(), list.AddData, pb["item"], "", make(chan list.ReturnChannelData)}
+
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			if errors.Is(returnVal.Err, list.AlreadyExistsErr) {
+				job.Writer.Write([]byte("Already Exists"))
+			} else {
+				job.Writer.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 	}
-	job.done <- true
 	return
 }
 
 func putRequest(job RequestJob) {
+	defer close(job.done)
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
-		job.done <- true
-	}
-	item := pb["item"]
-	replaceWith := pb["replacewith"]
-	job.Writer.Header().Set("Content-Type", "application/json")
-	if item == "" || replaceWith == "" {
-		job.Writer.WriteHeader(http.StatusBadRequest)
-		job.done <- true
 		return
 	}
-	err = list.UpdateEntry(item, replaceWith)
-	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
-		if errors.Is(err, list.NotFoundErr) {
-			job.Writer.WriteHeader(http.StatusNotFound)
-		} else {
-			job.Writer.WriteHeader(http.StatusInternalServerError)
+
+	if pb["item"] == "" || pb["replacewith"] == "" {
+		job.Writer.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	data := list.DataStoreJob{job.Request.Context(), list.UpdateData, pb["item"], pb["replacewith"], make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			if errors.Is(returnVal.Err, list.NotFoundErr) {
+				job.Writer.WriteHeader(http.StatusNotFound)
+			} else {
+				job.Writer.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 	}
-	job.done <- true
 	return
 }
 
 func deleteRequest(job RequestJob) {
+	defer close(job.done)
 	var db = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&db)
 	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		job.Writer.WriteHeader(http.StatusBadRequest)
-		job.done <- true
 		return
 	}
-	err = list.DeleteEntry(db["item"])
-	if err != nil {
-		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
-		if errors.Is(err, list.NotFoundErr) {
-			job.Writer.WriteHeader(http.StatusNotFound)
-		} else {
-			job.Writer.WriteHeader(http.StatusInternalServerError)
+	data := list.DataStoreJob{job.Request.Context(), list.UpdateData, db["item"], "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			if errors.Is(returnVal.Err, list.NotFoundErr) {
+				job.Writer.WriteHeader(http.StatusNotFound)
+			} else {
+				job.Writer.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 	}
-	job.done <- true
 	return
 }
 
 func serveTemplate(job RequestJob) {
-	logger.InfoContext(job.Request.Context(), "Serving Template")
+	defer close(job.done)
+	list.Logger.InfoContext(job.Request.Context(), "Serving Template")
 	lp := filepath.Join("dynamic", "layout.html")
-	data := todoPageData{
+	pageData := todoPageData{
 		PageTitle: "TO DO LIST",
 	}
-	data.Items = list.SortedMap()
+
+	data := list.DataStoreJob{job.Request.Context(), list.FetchData, "", "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			job.Writer.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
+	pageData.Items = sortedArray(returnVal.List)
 
 	tmpl, err := template.New("layout.html").ParseFiles(lp)
 	if err != nil {
-		logger.ErrorContext(job.Request.Context(), "error parsing list template", err)
-		job.done <- true
+		list.Logger.ErrorContext(job.Request.Context(), "error parsing list template", err)
 		return
 	}
-	err = tmpl.Execute(job.Writer, data)
+	err = tmpl.Execute(job.Writer, pageData)
 	if err != nil {
-		logger.ErrorContext(job.Request.Context(), "error executing list template", err)
+		list.Logger.ErrorContext(job.Request.Context(), "error executing list template", err)
 	}
-	job.done <- true
 	return
 }
 
@@ -165,7 +176,7 @@ func ProcessQueue() {
 	for v := range Queue {
 		// get method and log request
 		requestlog := fmt.Sprintf("Process %s Request", v.Request.Method)
-		logger.InfoContext(v.Request.Context(), requestlog)
+		list.Logger.InfoContext(v.Request.Context(), requestlog)
 		switch strings.ToUpper(v.Request.Method) {
 		case "POST":
 			postRequest(v)
@@ -177,25 +188,44 @@ func ProcessQueue() {
 			serveTemplate(v)
 		default:
 			v.Writer.WriteHeader(http.StatusMethodNotAllowed)
-			v.done <- true
 		}
 	}
 }
 
 var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	data := RequestJob{w, r, make(chan bool)}
+	data := RequestJob{w, r, make(chan struct{})}
 	Queue <- data
 	<-data.done
 })
 
 func main() {
 	ctx := context.Background()
-	if err := list.LoadEntries(); err != nil {
-		logger.ErrorContext(ctx, "Error Loading todo List", "details", err)
-		panic(errors.New(fmt.Sprintf("Error Loading todo List %v", err)))
+
+	go list.ProcessDataJobs()
+
+	data := list.DataStoreJob{ctx, list.LoadData, "", "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(ctx, "Error Loading todo List", "details", returnVal.Err)
+			return
+		}
 	}
 
 	go ProcessQueue()
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-c
+		fmt.Printf("closing down...\n")
+		data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		<-data.ReturnChannel
+		os.Exit(1)
+	}()
 
 	mux := http.NewServeMux()
 	fs := http.FileServer(http.Dir("./static"))
@@ -203,7 +233,8 @@ func main() {
 	mux.Handle("/todo", TracingMiddleware(ProcessRequest))
 	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
 	fmt.Printf("\nListening on port 8000\n")
-	if err := http.ListenAndServe(":8000", mux); err != nil {
+	if err := http.ListenAndServe(":8003", mux); err != nil {
 		fmt.Printf("error running http server: %s\n", err)
 	}
+
 }

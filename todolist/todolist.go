@@ -2,24 +2,99 @@ package todolist
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 )
 
 var mToDoList = make(map[int]string)
+
 var NotFoundErr = fmt.Errorf("not found")
 var AlreadyExistsErr = fmt.Errorf("already exists")
+
+var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: true})
+var customHandler = &ContextHandler{Handler: baseHandler}
+var Logger = slog.New(customHandler)
+
+func init() {
+	slog.SetDefault(Logger)
+}
+
+type ContextHandler struct {
+	slog.Handler
+}
+
+func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
+	if traceid, ok := ctx.Value("X-Request-ID").(string); ok {
+		r.AddAttrs(slog.String("trace_id", traceid))
+	}
+	if userID, ok := ctx.Value("user_id").(string); ok {
+		r.AddAttrs(slog.String("user_id", userID))
+	}
+	return h.Handler.Handle(ctx, r)
+}
 
 type ToDoItem struct {
 	Id   int
 	Item string
 }
 
-func LoadEntries() error {
+type JobType int
+
+const (
+	LoadData = iota
+	FetchData
+	AddData
+	UpdateData
+	DeleteData
+	StoreData
+)
+
+type ReturnChannelData struct {
+	List map[int]string
+	Err  error
+}
+
+type DataStoreJob struct {
+	Context       context.Context
+	JobType       JobType
+	KeyValue      string
+	AltValue      string
+	ReturnChannel chan ReturnChannelData
+}
+
+var DataJobQueue = make(chan DataStoreJob, 100)
+
+func ProcessDataJobs() {
+	for v := range DataJobQueue {
+		switch v.JobType {
+		case LoadData:
+			go LoadToDoList(v)
+		case FetchData:
+			go FetchToDoList(v)
+		case AddData:
+			go AddToDoItem(v)
+		case UpdateData:
+			go UpdateToDoItem(v)
+		case DeleteData:
+			go DeleteToDoItem(v)
+		case StoreData:
+			PersistEntries(v)
+		}
+	}
+}
+
+func LoadToDoList(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelValue := ReturnChannelData{nil, nil}
+
 	file, err := os.OpenFile("todo.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		return err
+		Logger.ErrorContext(dataJob.Context, fmt.Sprintf("error %v opening todo file", err))
+		returnChannelValue.Err = err
 	}
 	defer file.Close()
 	scan1 := bufio.NewScanner(file)
@@ -29,16 +104,79 @@ func LoadEntries() error {
 			mToDoList[index] = s
 		}
 	}
-	return nil
+	returnChannelValue.List = mToDoList
+	dataJob.ReturnChannel <- returnChannelValue
+	return
 }
 
-func ToDoList() []string {
-	list := make([]string, 0)
-	for _, v := range mToDoList {
-		list = append(list, v)
+func AddToDoItem(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelData := ReturnChannelData{nil, nil}
+
+	idx := itemExists(dataJob.KeyValue)
+
+	if idx != -1 {
+		returnChannelData.Err = AlreadyExistsErr
+		dataJob.ReturnChannel <- returnChannelData
+		return
 	}
-	return list
+	idx = getNewKey()
+	mToDoList[idx] = dataJob.KeyValue
+	returnChannelData.List = mToDoList
+	dataJob.ReturnChannel <- returnChannelData
+	return
 }
+
+func UpdateToDoItem(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelData := ReturnChannelData{nil, nil}
+	idx := itemExists(dataJob.KeyValue)
+	if idx == -1 {
+		returnChannelData.Err = NotFoundErr
+		dataJob.ReturnChannel <- returnChannelData
+		return
+	}
+	mToDoList[idx] = dataJob.AltValue
+	returnChannelData.List = mToDoList
+	dataJob.ReturnChannel <- returnChannelData
+	return
+}
+
+func DeleteToDoItem(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelData := ReturnChannelData{nil, nil}
+	if dataJob.KeyValue == "*" {
+		// remove all items by just recreating the map
+		mToDoList = make(map[int]string)
+		returnChannelData.List = mToDoList
+		return
+	}
+
+	idx := itemExists(dataJob.KeyValue)
+	if idx == -1 {
+		returnChannelData.Err = NotFoundErr
+		dataJob.ReturnChannel <- returnChannelData
+		return
+	}
+
+	delete(mToDoList, idx)
+	returnChannelData.List = mToDoList
+	return
+}
+
+func FetchToDoList(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelData := ReturnChannelData{mToDoList, nil}
+	dataJob.ReturnChannel <- returnChannelData
+}
+
+// func ToDoList() []string {
+// 	list := make([]string, 0)
+// 	for _, v := range mToDoList {
+// 		list = append(list, v)
+// 	}
+// 	return list
+// }
 
 func SortedMap() []ToDoItem {
 
@@ -59,21 +197,29 @@ func SortedMap() []ToDoItem {
 }
 
 // only used locally so make private
-func persistEntries() error {
+func PersistEntries(dataJob DataStoreJob) {
+	defer close(dataJob.ReturnChannel)
+	returnChannelData := ReturnChannelData{nil, nil}
 	file, err := os.Create("todo.txt")
 	if err != nil {
-		return err
+		returnChannelData.Err = err
+		dataJob.ReturnChannel <- returnChannelData
+		return
 	}
 	defer file.Close()
 	if len(mToDoList) > 0 {
 		for _, v := range SortedMap() {
 			_, err := file.WriteString(v.Item + "\n")
 			if err != nil {
-				return err
+				returnChannelData.Err = err
+				dataJob.ReturnChannel <- returnChannelData
+				return
 			}
 		}
 	}
-	return nil
+	returnChannelData.List = mToDoList
+	dataJob.ReturnChannel <- returnChannelData
+	return
 }
 
 func getNewKey() int {
@@ -86,67 +232,7 @@ func getNewKey() int {
 	return keyVal + 1
 }
 
-func ListEntries() error {
-	fmt.Println("Current ToDo list")
-	if len(mToDoList) == 0 {
-		fmt.Println("Nothing to do!")
-	} else {
-		for _, v := range SortedMap() {
-			fmt.Printf("%0d. %s\n", v.Id, v.Item)
-		}
-	}
-	return nil
-}
-
-func AddEntry(todoItem string) error {
-	idx := ItemExists(todoItem)
-	if idx == -1 {
-		idx := getNewKey()
-		mToDoList[idx] = todoItem
-		if err := persistEntries(); err != nil {
-			return err
-		}
-	} else {
-		return AlreadyExistsErr
-	}
-	return nil
-}
-
-func UpdateEntry(oldTodoItem string, newTodoItem string) error {
-	idx := ItemExists(oldTodoItem)
-	if idx != -1 {
-		mToDoList[idx] = newTodoItem
-		if err := persistEntries(); err != nil {
-			return err
-		}
-	} else {
-		return NotFoundErr
-	}
-	return nil
-}
-
-func DeleteEntry(todoItem string) error {
-	if todoItem == "*" {
-		// remove all items by just recreating the map
-		mToDoList = make(map[int]string)
-		if err := persistEntries(); err != nil {
-			return err
-		}
-	} else {
-		idx := ItemExists(todoItem)
-		if idx != -1 {
-			delete(mToDoList, idx)
-			if err := persistEntries(); err != nil {
-				return err
-			}
-		} else {
-			return NotFoundErr
-		}
-	}
-	return nil
-}
-
-func ItemExists(searchString string) int {
+func itemExists(searchString string) int {
 	returnVal := -1
 	for idx, val := range mToDoList {
 		if val == searchString {
