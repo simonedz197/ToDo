@@ -5,3 +5,4 @@ call dentist to make appointment
 play golf
 brush hair
 call doctor to make appointment
+go to gym

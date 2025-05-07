@@ -11,6 +11,11 @@ var mToDoList = make(map[int]string)
 var NotFoundErr = fmt.Errorf("not found")
 var AlreadyExistsErr = fmt.Errorf("already exists")
 
+type ToDoItem struct {
+	Id   int
+	Item string
+}
+
 func LoadEntries() error {
 	file, err := os.OpenFile("todo.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -35,8 +40,10 @@ func ToDoList() []string {
 	return list
 }
 
-func SortedMap() map[int]string {
-	sortedmap := make(map[int]string)
+func SortedMap() []ToDoItem {
+
+	sortedmap := make([]ToDoItem, 0)
+
 	keys := make([]int, 0, len(mToDoList))
 	for idx, _ := range mToDoList {
 		keys = append(keys, idx)
@@ -44,7 +51,8 @@ func SortedMap() map[int]string {
 	sort.Ints(keys)
 	index := 1
 	for _, v := range keys {
-		sortedmap[index] = mToDoList[v]
+		item := ToDoItem{index, mToDoList[v]}
+		sortedmap = append(sortedmap, item)
 		index += 1
 	}
 	return sortedmap
@@ -59,7 +67,7 @@ func persistEntries() error {
 	defer file.Close()
 	if len(mToDoList) > 0 {
 		for _, v := range SortedMap() {
-			_, err := file.WriteString(v + "\n")
+			_, err := file.WriteString(v.Item + "\n")
 			if err != nil {
 				return err
 			}
@@ -83,8 +91,8 @@ func ListEntries() error {
 	if len(mToDoList) == 0 {
 		fmt.Println("Nothing to do!")
 	} else {
-		for i, v := range SortedMap() {
-			fmt.Printf("%0d. %s\n", i, v)
+		for _, v := range SortedMap() {
+			fmt.Printf("%0d. %s\n", v.Id, v.Item)
 		}
 	}
 	return nil

@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	//slogctx "github.com/veqryn/slog-context"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	list "tut2/todo/todolist"
 )
 
@@ -17,6 +18,13 @@ var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 06
 var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: true})
 var customHandler = &ContextHandler{Handler: baseHandler}
 var logger = slog.New(customHandler)
+
+type RequestData struct {
+	Writer  http.ResponseWriter
+	Request *http.Request
+}
+
+var Queue = make(chan RequestData)
 
 const (
 	xRequestId = "X-Request-ID"
@@ -51,30 +59,10 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.Handler.Handle(ctx, r)
 }
 
-type todoHandler struct{}
-
-type putBody struct {
-	item        string
-	replacewith string
+type todoPageData struct {
+	PageTitle string
+	Items     []list.ToDoItem
 }
-
-type deleteBody struct {
-	item int
-	task string
-}
-
-var getTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	logger.InfoContext(r.Context(), "get request received")
-	todolist := list.SortedMap()
-	j, err := json.Marshal(todolist)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(j)
-	return
-})
 
 var postTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	logger.InfoContext(r.Context(), "post request received")
@@ -92,7 +80,7 @@ var postTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	} else {
-		getTodo(w, r)
+		serveTemplate(w, r)
 	}
 	return
 })
@@ -104,7 +92,6 @@ var putTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	// make sure we have an item and a replacewith
 	item := pb["item"]
 	replaceWith := pb["replacewith"]
 	w.Header().Set("Content-Type", "application/json")
@@ -120,7 +107,7 @@ var putTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	} else {
-		getTodo(w, r)
+		serveTemplate(w, r)
 	}
 	return
 })
@@ -140,10 +127,38 @@ var deleteTodo = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	} else {
-		getTodo(w, r)
+		serveTemplate(w, r)
 	}
 	return
 })
+
+var serveTemplate = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	lp := filepath.Join("dynamic", "layout.html")
+	data := todoPageData{
+		PageTitle: "TO DO LIST",
+	}
+	data.Items = list.SortedMap()
+
+	tmpl, err := template.New("layout.html").ParseFiles(lp)
+	if err != nil {
+		logger.ErrorContext(r.Context(), "error parsing list template", err)
+		return
+	}
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		logger.ErrorContext(r.Context(), "error executing list template", err)
+	}
+	return
+})
+
+func ProcessQueue() {
+	for v := range Queue {
+		// get method and log request
+		requestlog := fmt.Sprintf("Process %s Request", v.Request.Method)
+		logger.InfoContext(v.Request.Context(), requestlog)
+
+	}
+}
 
 func main() {
 	ctx := context.Background()
@@ -153,11 +168,13 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	fs := http.FileServer(http.Dir("./static"))
 
-	mux.Handle("GET /todo", TracingMiddleware(getTodo))
+	mux.Handle("GET /todo", TracingMiddleware(serveTemplate))
 	mux.Handle("POST /todo", TracingMiddleware(postTodo))
 	mux.Handle("PUT /todo", TracingMiddleware(putTodo))
 	mux.Handle("DELETE /todo", TracingMiddleware(deleteTodo))
+	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
 	fmt.Printf("\nListening on port 8000\n")
 	if err := http.ListenAndServe(":8000", mux); err != nil {
 		fmt.Printf("error running http server: %s\n", err)
