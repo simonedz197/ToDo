@@ -4,6 +4,5 @@ brush teeth
 call dentist to make appointment
 play golf
 brush hair
-call doctor to make appointment
 go to gym
-go to gym again
+weed garden

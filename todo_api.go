@@ -70,15 +70,18 @@ func postRequest(job RequestJob) {
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
 		job.done <- true
 		return
 	}
 	err = list.AddEntry(pb["item"])
 	if err != nil {
-		job.Writer.WriteHeader(http.StatusInternalServerError)
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		if errors.Is(err, list.AlreadyExistsErr) {
 			job.Writer.Write([]byte("Already Exists"))
+		} else {
+			job.Writer.WriteHeader(http.StatusInternalServerError)
 		}
 	}
 	job.done <- true
@@ -89,6 +92,7 @@ func putRequest(job RequestJob) {
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
 		job.done <- true
 	}
@@ -102,9 +106,11 @@ func putRequest(job RequestJob) {
 	}
 	err = list.UpdateEntry(item, replaceWith)
 	if err != nil {
-		job.Writer.WriteHeader(http.StatusInternalServerError)
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		if errors.Is(err, list.NotFoundErr) {
 			job.Writer.WriteHeader(http.StatusNotFound)
+		} else {
+			job.Writer.WriteHeader(http.StatusInternalServerError)
 		}
 	}
 	job.done <- true
@@ -115,15 +121,18 @@ func deleteRequest(job RequestJob) {
 	var db = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&db)
 	if err != nil {
-		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		job.Writer.WriteHeader(http.StatusBadRequest)
 		job.done <- true
 		return
 	}
 	err = list.DeleteEntry(db["item"])
 	if err != nil {
-		job.Writer.WriteHeader(http.StatusInternalServerError)
+		logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
 		if errors.Is(err, list.NotFoundErr) {
 			job.Writer.WriteHeader(http.StatusNotFound)
+		} else {
+			job.Writer.WriteHeader(http.StatusInternalServerError)
 		}
 	}
 	job.done <- true

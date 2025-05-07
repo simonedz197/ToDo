@@ -111,3 +111,29 @@ time=2025-05-07T09:36:29.629+01:00 level=INFO source=/Users/simon.edmundson/go/s
 time=2025-05-07T09:36:29.630+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=dde2dccf-18a3-416a-9db2-fb0459441c92
 time=2025-05-07T09:36:30.944+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=8046e93e-8513-4339-96ad-748d9a91e917
 time=2025-05-07T09:36:30.944+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=8046e93e-8513-4339-96ad-748d9a91e917
+time=2025-05-07T09:44:18.211+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process PATCH Request" trace_id=c8ecfb0d-a177-4b97-8d3d-3fbfce4a83ab
+time=2025-05-07T09:44:45.148+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=57534323-1a2d-47ef-aa5c-c3d2301072d8
+time=2025-05-07T09:44:45.148+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=57534323-1a2d-47ef-aa5c-c3d2301072d8
+time=2025-05-07T09:44:51.363+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=7e81e78b-5ec9-4e67-a2ea-c62f75d66b7a
+time=2025-05-07T09:44:51.363+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=7e81e78b-5ec9-4e67-a2ea-c62f75d66b7a
+time=2025-05-07T09:45:17.248+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process DELETE Request" trace_id=cd73793b-4cce-4aca-8c89-7a2757a42e28
+time=2025-05-07T09:45:19.625+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process GET Request" trace_id=f4156f0c-587f-4a33-8470-0616306f1172
+time=2025-05-07T09:45:19.625+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:134 msg="Serving Template" trace_id=f4156f0c-587f-4a33-8470-0616306f1172
+time=2025-05-07T09:45:34.744+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:159 msg="Process DELETE Request" trace_id=65390740-7fd8-4d07-b8e2-1b1598ab8079
+time=2025-05-07T09:45:34.744+01:00 level=INFO source=:0 msg="http: superfluous response.WriteHeader call from main.deleteRequest (todo_api.go:126)"
+time=2025-05-07T09:50:38.306+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:161 msg="Process DELETE Request" trace_id=094c7285-3f60-48ca-bfaf-eb1a97f849ba
+time=2025-05-07T09:50:38.319+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:124 msg="not found" trace_id=094c7285-3f60-48ca-bfaf-eb1a97f849ba
+time=2025-05-07T09:53:44.541+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process DELETE Request" trace_id=bccb5b25-810c-4fa8-9781-2a74c96ee868
+time=2025-05-07T09:53:44.541+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:131 msg="not found" trace_id=bccb5b25-810c-4fa8-9781-2a74c96ee868
+time=2025-05-07T09:53:54.623+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process PUT Request" trace_id=b05c21f8-86fb-49d8-9ba5-eb0c7a607445
+time=2025-05-07T09:53:54.623+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:95 msg="invalid character '}' looking for beginning of object key string" trace_id=b05c21f8-86fb-49d8-9ba5-eb0c7a607445
+time=2025-05-07T09:53:54.624+01:00 level=INFO source=:0 msg="http: superfluous response.WriteHeader call from main.putRequest (todo_api.go:103)"
+time=2025-05-07T09:54:54.174+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process PUT Request" trace_id=062a38ba-6e54-48b8-8cfb-055da83fdf4f
+time=2025-05-07T09:54:58.649+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process PUT Request" trace_id=26c29233-d6a7-43ef-b77b-7955be92bda5
+time=2025-05-07T09:55:04.234+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process PUT Request" trace_id=c068f2f7-a817-464d-a793-a8b9ad3f2f6c
+time=2025-05-07T09:55:04.234+01:00 level=ERROR source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:109 msg="not found" trace_id=c068f2f7-a817-464d-a793-a8b9ad3f2f6c
+time=2025-05-07T09:55:10.730+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process GET Request" trace_id=a282cc33-e45d-47aa-98d5-e4e63baf3907
+time=2025-05-07T09:55:10.730+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:143 msg="Serving Template" trace_id=a282cc33-e45d-47aa-98d5-e4e63baf3907
+time=2025-05-07T09:55:23.328+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process PUT Request" trace_id=5e5f7a0f-1295-4184-8b20-729572dbb4bd
+time=2025-05-07T09:55:26.513+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:168 msg="Process GET Request" trace_id=556abb31-30cb-4df3-8603-4580cd1d4ffa
+time=2025-05-07T09:55:26.513+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:143 msg="Serving Template" trace_id=556abb31-30cb-4df3-8603-4580cd1d4ffa
