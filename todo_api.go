@@ -172,7 +172,7 @@ func serveTemplate(job RequestJob) {
 	return
 }
 
-func ProcessQueue() {
+func ProcessHttpQueue() {
 	for v := range Queue {
 		// get method and log request
 		requestlog := fmt.Sprintf("Process %s Request", v.Request.Method)
@@ -198,17 +198,11 @@ var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Reques
 	<-data.done
 })
 
-func shutDown() {
-	fmt.Printf("closing down...\n")
-	data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
-	list.DataJobQueue <- data
-	<-data.ReturnChannel
-}
-
 func main() {
 	ctx := context.Background()
 
 	go list.ProcessDataJobs()
+	go ProcessHttpQueue()
 
 	data := list.DataStoreJob{ctx, list.LoadData, "", "", make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
@@ -220,14 +214,21 @@ func main() {
 		}
 	}
 
-	go ProcessQueue()
-
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-c
-		shutDown()
+		fmt.Printf("\nclosing down...\n")
+		data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		returnVal, ok := <-data.ReturnChannel
+		if ok {
+			if returnVal.Err != nil {
+				list.Logger.ErrorContext(ctx, "Error saving todo List", "details", returnVal.Err)
+				return
+			}
+		}
 		os.Exit(1)
 	}()
 
@@ -237,8 +238,7 @@ func main() {
 	mux.Handle("/todo", TracingMiddleware(ProcessRequest))
 	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
 	fmt.Printf("\nListening on port 8000\n")
-	if err := http.ListenAndServe(":8003", mux); err != nil {
+	if err := http.ListenAndServe(":8000", mux); err != nil {
 		fmt.Printf("error running http server: %s\n", err)
 	}
-
 }
