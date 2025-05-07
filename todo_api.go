@@ -198,6 +198,13 @@ var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Reques
 	<-data.done
 })
 
+func shutDown() {
+	fmt.Printf("closing down...\n")
+	data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	<-data.ReturnChannel
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -220,10 +227,7 @@ func main() {
 
 	go func() {
 		<-c
-		fmt.Printf("closing down...\n")
-		data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
-		list.DataJobQueue <- data
-		<-data.ReturnChannel
+		shutDown()
 		os.Exit(1)
 	}()
 
