@@ -7,9 +7,19 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 )
 
-var mToDoList = make(map[int]string)
+type ToDoItem struct {
+	Id   int
+	Item string
+}
+
+type baseToDoList map[int]string
+
+var UserToDoList = make(map[string]baseToDoList)
+
+//var mToDoList = make(map[int]string)
 
 var NotFoundErr = fmt.Errorf("not found")
 var AlreadyExistsErr = fmt.Errorf("already exists")
@@ -37,11 +47,6 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.Handler.Handle(ctx, r)
 }
 
-type ToDoItem struct {
-	Id   int
-	Item string
-}
-
 type JobType int
 
 const (
@@ -60,6 +65,7 @@ type ReturnChannelData struct {
 
 type DataStoreJob struct {
 	Context       context.Context
+	Uid           string
 	JobType       JobType
 	KeyValue      string
 	AltValue      string
@@ -87,6 +93,14 @@ func ProcessDataJobs() {
 	}
 }
 
+func getUserList(uid string) map[int]string {
+	userlist, found := UserToDoList[uid]
+	if !found {
+		userlist = make(map[int]string)
+	}
+	return userlist
+}
+
 func LoadToDoList(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelValue := ReturnChannelData{nil, nil}
@@ -100,11 +114,17 @@ func LoadToDoList(dataJob DataStoreJob) {
 	scan1 := bufio.NewScanner(file)
 	for scan1.Scan() {
 		if s := scan1.Text(); s != "" {
-			index := getNewKey()
-			mToDoList[index] = s
+			line := strings.Split(s, ",")
+			if len(line) == 2 {
+				uid := line[0]
+				userlist := getUserList(uid)
+				index := getNewKey(userlist)
+				userlist[index] = line[1]
+				UserToDoList[uid] = userlist
+			}
 		}
 	}
-	returnChannelValue.List = mToDoList
+	returnChannelValue.List = UserToDoList[dataJob.Uid]
 	dataJob.ReturnChannel <- returnChannelValue
 	return
 }
@@ -113,16 +133,20 @@ func AddToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
 
-	idx := itemExists(dataJob.KeyValue)
+	userlist := getUserList(dataJob.Uid)
+
+	idx := itemExists(userlist, dataJob.KeyValue)
 
 	if idx != -1 {
 		returnChannelData.Err = AlreadyExistsErr
 		dataJob.ReturnChannel <- returnChannelData
 		return
 	}
-	idx = getNewKey()
-	mToDoList[idx] = dataJob.KeyValue
-	returnChannelData.List = mToDoList
+
+	idx = getNewKey(userlist)
+	userlist[idx] = dataJob.KeyValue
+	UserToDoList[dataJob.Uid] = userlist
+	returnChannelData.List = UserToDoList[dataJob.Uid]
 	dataJob.ReturnChannel <- returnChannelData
 	return
 }
@@ -130,14 +154,18 @@ func AddToDoItem(dataJob DataStoreJob) {
 func UpdateToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
-	idx := itemExists(dataJob.KeyValue)
+
+	userlist := getUserList(dataJob.Uid)
+
+	idx := itemExists(userlist, dataJob.KeyValue)
 	if idx == -1 {
 		returnChannelData.Err = NotFoundErr
 		dataJob.ReturnChannel <- returnChannelData
 		return
 	}
-	mToDoList[idx] = dataJob.AltValue
-	returnChannelData.List = mToDoList
+	userlist[idx] = dataJob.AltValue
+	UserToDoList[dataJob.Uid] = userlist
+	returnChannelData.List = userlist
 	dataJob.ReturnChannel <- returnChannelData
 	return
 }
@@ -145,43 +173,48 @@ func UpdateToDoItem(dataJob DataStoreJob) {
 func DeleteToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
+
+	userlist := getUserList(dataJob.Uid)
+
 	if dataJob.KeyValue == "*" {
 		// remove all items by just recreating the map
-		mToDoList = make(map[int]string)
-		returnChannelData.List = mToDoList
+		userlist = make(map[int]string)
+		UserToDoList[dataJob.Uid] = userlist
+		returnChannelData.List = userlist
 		return
 	}
 
-	idx := itemExists(dataJob.KeyValue)
+	idx := itemExists(userlist, dataJob.KeyValue)
 	if idx == -1 {
 		returnChannelData.Err = NotFoundErr
 		dataJob.ReturnChannel <- returnChannelData
 		return
 	}
 
-	delete(mToDoList, idx)
-	returnChannelData.List = mToDoList
+	delete(userlist, idx)
+	UserToDoList[dataJob.Uid] = userlist
+	returnChannelData.List = userlist
 	return
 }
 
 func FetchToDoList(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
-	returnChannelData := ReturnChannelData{mToDoList, nil}
+	returnChannelData := ReturnChannelData{UserToDoList[dataJob.Uid], nil}
 	dataJob.ReturnChannel <- returnChannelData
 }
 
-func SortedMap() []ToDoItem {
+func SortedMap(userlist map[int]string) []ToDoItem {
 
 	sortedmap := make([]ToDoItem, 0)
 
-	keys := make([]int, 0, len(mToDoList))
-	for idx, _ := range mToDoList {
+	keys := make([]int, 0, len(userlist))
+	for idx, _ := range userlist {
 		keys = append(keys, idx)
 	}
 	sort.Ints(keys)
 	index := 1
 	for _, v := range keys {
-		item := ToDoItem{index, mToDoList[v]}
+		item := ToDoItem{index, userlist[v]}
 		sortedmap = append(sortedmap, item)
 		index += 1
 	}
@@ -198,24 +231,26 @@ func PersistEntries(dataJob DataStoreJob) {
 		return
 	}
 	defer file.Close()
-	if len(mToDoList) > 0 {
-		for _, v := range SortedMap() {
-			_, err := file.WriteString(v.Item + "\n")
-			if err != nil {
-				returnChannelData.Err = err
-				dataJob.ReturnChannel <- returnChannelData
-				return
+	if len(UserToDoList) > 0 {
+		for i, u := range UserToDoList {
+			for _, v := range SortedMap(u) {
+				_, err := file.WriteString(i + "," + v.Item + "\n")
+				if err != nil {
+					returnChannelData.Err = err
+					dataJob.ReturnChannel <- returnChannelData
+					return
+				}
 			}
 		}
 	}
-	returnChannelData.List = mToDoList
+	returnChannelData.List = nil
 	dataJob.ReturnChannel <- returnChannelData
 	return
 }
 
-func getNewKey() int {
+func getNewKey(userlist map[int]string) int {
 	keyVal := 0
-	for idx, _ := range mToDoList {
+	for idx, _ := range userlist {
 		if idx > keyVal {
 			keyVal = idx
 		}
@@ -223,9 +258,9 @@ func getNewKey() int {
 	return keyVal + 1
 }
 
-func itemExists(searchString string) int {
+func itemExists(userlist map[int]string, searchString string) int {
 	returnVal := -1
-	for idx, val := range mToDoList {
+	for idx, val := range userlist {
 		if val == searchString {
 			returnVal = idx
 			break
@@ -234,16 +269,16 @@ func itemExists(searchString string) int {
 	return returnVal
 }
 
-func SortedArray(maptosort map[int]string) []ToDoItem {
+func SortedArray(userlist map[int]string) []ToDoItem {
 	returnVal := make([]ToDoItem, 0)
-	keys := make([]int, 0, len(maptosort))
-	for idx, _ := range maptosort {
+	keys := make([]int, 0, len(userlist))
+	for idx, _ := range userlist {
 		keys = append(keys, idx)
 	}
 	sort.Ints(keys)
 	index := 1
 	for _, v := range keys {
-		item := ToDoItem{index, maptosort[v]}
+		item := ToDoItem{index, userlist[v]}
 		returnVal = append(returnVal, item)
 		index += 1
 	}

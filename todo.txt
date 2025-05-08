@@ -1,9 +1,10 @@
-gardening
-wash car
-brush teeth
-call dentist
-play golf
-brush hair
-go to gym
-weed garden
-walk dog
+simon,gardening
+simon,wash car
+simon,walk dog
+john,brush teeth
+john,call dentist
+john,play golf
+mary,brush hair
+mary,go to gym
+mary,weed garden
+jack,walk dog
