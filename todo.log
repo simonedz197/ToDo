@@ -211,3 +211,5 @@ time=2025-05-07T16:32:08.268+01:00 level=INFO source=/Users/simon.edmundson/go/s
 time=2025-05-07T16:32:32.777+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:179 msg="Process PUT Request" trace_id=85b27b40-988d-415e-8981-f467586389ea
 time=2025-05-07T16:32:35.666+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:179 msg="Process GET Request" trace_id=8ed31222-1cf0-4207-ad3d-27462250aa01
 time=2025-05-07T16:32:35.666+01:00 level=INFO source=/Users/simon.edmundson/go/src/Tut2/ToDo/todo_api.go:144 msg="Serving Template" trace_id=8ed31222-1cf0-4207-ad3d-27462250aa01
+time=2025-05-08T07:33:33.846+01:00 level=INFO source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_api.go:179 msg="Process GET Request" trace_id=8a74e750-73f4-4c5e-8a04-b07f806d350b
+time=2025-05-08T07:33:33.862+01:00 level=INFO source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_api.go:144 msg="Serving Template" trace_id=8a74e750-73f4-4c5e-8a04-b07f806d350b

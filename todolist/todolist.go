@@ -170,14 +170,6 @@ func FetchToDoList(dataJob DataStoreJob) {
 	dataJob.ReturnChannel <- returnChannelData
 }
 
-// func ToDoList() []string {
-// 	list := make([]string, 0)
-// 	for _, v := range mToDoList {
-// 		list = append(list, v)
-// 	}
-// 	return list
-// }
-
 func SortedMap() []ToDoItem {
 
 	sortedmap := make([]ToDoItem, 0)
@@ -196,7 +188,6 @@ func SortedMap() []ToDoItem {
 	return sortedmap
 }
 
-// only used locally so make private
 func PersistEntries(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
@@ -239,6 +230,22 @@ func itemExists(searchString string) int {
 			returnVal = idx
 			break
 		}
+	}
+	return returnVal
+}
+
+func SortedArray(maptosort map[int]string) []ToDoItem {
+	returnVal := make([]ToDoItem, 0)
+	keys := make([]int, 0, len(maptosort))
+	for idx, _ := range maptosort {
+		keys = append(keys, idx)
+	}
+	sort.Ints(keys)
+	index := 1
+	for _, v := range keys {
+		item := ToDoItem{index, maptosort[v]}
+		returnVal = append(returnVal, item)
+		index += 1
 	}
 	return returnVal
 }

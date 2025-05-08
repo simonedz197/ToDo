@@ -2,41 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/google/uuid"
-	"log/slog"
-	"os"
 	"strings"
 	list "tut2/todo/todolist"
 )
 
-var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: true})
-var customHandler = &ContextHandler{Handler: baseHandler}
-var logger = slog.New(customHandler)
 var addFlag = flag.String("add", "", "add the todo list entry e.g. -add \"buy milk\"")
 var updateFlag = flag.String("update", "", "update the todo list entry e.g. -update \"buy milk\" \"buy 2 pints of milk\"")
 var deleteFlag = flag.String("delete", "", "delete the todo list entry e.g. -delete \"buy milk\"\nUse delete \"*\" to delete all")
-
-func init() {
-	slog.SetDefault(logger)
-}
-
-type ContextHandler struct {
-	slog.Handler
-}
-
-func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
-	if requestID, ok := ctx.Value("request_id").(string); ok {
-		r.AddAttrs(slog.String("request_id", requestID))
-	}
-	if userID, ok := ctx.Value("user_id").(string); ok {
-		r.AddAttrs(slog.String("user_id", userID))
-	}
-	return h.Handler.Handle(ctx, r)
-}
 
 // create a dummy context
 func dummyContext() context.Context {
@@ -68,38 +43,89 @@ func main() {
 	// we should get this passed in eventually
 	ctx := dummyContext()
 
+	// start the job queue prcessor
+	go list.ProcessDataJobs()
+
 	flag.Parse()
 
 	flagsSet := flagsPassed()
 
 	if len(flagsSet) > 1 {
-		logger.ErrorContext(ctx, "Error parsing command line", "details", "too many flags passed")
-		panic(errors.New("Error parsing command line too many flags"))
+		list.Logger.ErrorContext(ctx, "Error parsing command line", "details", "too many flags passed")
+		return
+	}
+	// load data
+	data := list.DataStoreJob{ctx, list.LoadData, "", "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok := <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(ctx, "Error Loading todo List", "details", returnVal.Err)
+			return
+		}
 	}
 
-	if err := list.LoadEntries(); err != nil {
-		logger.ErrorContext(ctx, "Error Loading todo List", "details", err)
-		panic(errors.New(fmt.Sprintf("Error Loading todo List %v", err)))
-	}
+	// save data deferred to last thing to do
+	defer func() {
+		fmt.Printf("\nclosing down...\n")
+		data := list.DataStoreJob{ctx, list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		returnVal, ok := <-data.ReturnChannel
+		if ok {
+			if returnVal.Err != nil {
+				list.Logger.ErrorContext(ctx, "Error saving todo List", "details", returnVal.Err)
+				return
+			}
+		}
+	}()
 
 	switch flagsSet[0] {
 	case "add":
-		if err := list.AddEntry(*addFlag); err != nil {
-			logger.ErrorContext(ctx, "Error Adding to do item to list", "details", err)
+		data := list.DataStoreJob{ctx, list.AddData, *addFlag, "", make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		returnVal, ok := <-data.ReturnChannel
+		if ok {
+			if returnVal.Err != nil {
+				list.Logger.ErrorContext(ctx, "Error Adding to do item to list", "details", returnVal.Err)
+				return
+			}
 		}
 	case "delete":
-		if err := list.DeleteEntry(*deleteFlag); err != nil {
-			logger.ErrorContext(ctx, "Error Deleting to do item from list", "details", err)
+		data := list.DataStoreJob{ctx, list.DeleteData, *deleteFlag, "", make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		returnVal, ok := <-data.ReturnChannel
+		if ok {
+			if returnVal.Err != nil {
+				list.Logger.ErrorContext(ctx, "Error Deleting to do item from list", "details", returnVal.Err)
+				return
+			}
 		}
 	case "update":
 		if flag.NArg() == 0 {
 			fmt.Printf("\nyou need to enter the value to update to")
 		}
-		if err := list.UpdateEntry(*updateFlag, flag.Arg(0)); err != nil {
-			logger.ErrorContext(ctx, "Error Deleting to do item from list", "details", err)
+		data := list.DataStoreJob{ctx, list.UpdateData, *updateFlag, flag.Arg(0), make(chan list.ReturnChannelData)}
+		list.DataJobQueue <- data
+		returnVal, ok := <-data.ReturnChannel
+		if ok {
+			if returnVal.Err != nil {
+				list.Logger.ErrorContext(ctx, "Error Deleting to do item from list", "details", returnVal.Err)
+				return
+			}
 		}
 	}
-	if err := list.ListEntries(); err != nil {
-		logger.ErrorContext(ctx, "Error listing to do items", "details", err)
+	data = list.DataStoreJob{ctx, list.FetchData, "", "", make(chan list.ReturnChannelData)}
+	list.DataJobQueue <- data
+	returnVal, ok = <-data.ReturnChannel
+	if ok {
+		if returnVal.Err != nil {
+			list.Logger.ErrorContext(ctx, "Error listing to do items", "details", returnVal.Err)
+			return
+		}
+		fmt.Printf("\nTO DO LIST\n----------\n")
+		for _, v := range list.SortedArray(returnVal.List) {
+			fmt.Printf("%d. %s\n", v.Id, v.Item)
+		}
 	}
+
 }

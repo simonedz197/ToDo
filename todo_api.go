@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	list "tut2/todo/todolist"
@@ -28,22 +27,6 @@ var Queue = make(chan RequestJob)
 type todoPageData struct {
 	PageTitle string
 	Items     []list.ToDoItem
-}
-
-func sortedArray(maptosort map[int]string) []list.ToDoItem {
-	returnVal := make([]list.ToDoItem, 0)
-	keys := make([]int, 0, len(maptosort))
-	for idx, _ := range maptosort {
-		keys = append(keys, idx)
-	}
-	sort.Ints(keys)
-	index := 1
-	for _, v := range keys {
-		item := list.ToDoItem{index, maptosort[v]}
-		returnVal = append(returnVal, item)
-		index += 1
-	}
-	return returnVal
 }
 
 func TracingMiddleware(next http.Handler) http.Handler {
@@ -67,7 +50,6 @@ func postRequest(job RequestJob) {
 		return
 	}
 	data := list.DataStoreJob{job.Request.Context(), list.AddData, pb["item"], "", make(chan list.ReturnChannelData)}
-
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -97,7 +79,6 @@ func putRequest(job RequestJob) {
 		job.Writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
 	data := list.DataStoreJob{job.Request.Context(), list.UpdateData, pb["item"], pb["replacewith"], make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
@@ -158,16 +139,16 @@ func serveTemplate(job RequestJob) {
 		}
 	}
 
-	pageData.Items = sortedArray(returnVal.List)
+	pageData.Items = list.SortedArray(returnVal.List)
 
 	tmpl, err := template.New("layout.html").ParseFiles(lp)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), "error parsing list template", err)
+		list.Logger.ErrorContext(job.Request.Context(), "error parsing list template")
 		return
 	}
 	err = tmpl.Execute(job.Writer, pageData)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), "error executing list template", err)
+		list.Logger.ErrorContext(job.Request.Context(), "error executing list template")
 	}
 	return
 }
