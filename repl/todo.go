@@ -91,7 +91,7 @@ func main() {
 		cmd, _ := reader.ReadString('\n')
 		cmd = stripnl(cmd)
 		if cmd == "" {
-			cmd = "list"
+			cmd = "lst"
 		}
 
 		item := ""
