@@ -1,0 +1,6 @@
+time=2025-05-08T15:42:42.761+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:150 msg="Invalid command" user_id=edz197
+time=2025-05-08T15:43:04.554+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:150 msg="Invalid command" user_id=edz197
+time=2025-05-08T15:43:18.558+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:150 msg="Invalid command" user_id=edz197
+time=2025-05-08T15:44:27.601+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:150 msg="Invalid command" user_id=edz197
+time=2025-05-08T15:45:22.006+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:150 msg="Invalid command" user_id=edz197
+time=2025-05-08T15:51:07.412+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/todo/repl/todo.go:155 msg="Invalid command" user_id=edz197
