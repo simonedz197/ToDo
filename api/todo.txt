@@ -1,0 +1,12 @@
+mary,brush hair
+mary,go to gym
+mary,weed garden
+mary,call home
+jack,walk dog
+simon,gardening
+simon,wash car
+simon,walk dog
+simon,call home:
+john,brush teeth
+john,call dentist
+john,play golf

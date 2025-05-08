@@ -1,2 +1,3 @@
-simon,play golf
+simon,play squash
 simon,watch football
+mary,ring mom
