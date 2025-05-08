@@ -30,7 +30,9 @@ func dummyContext() context.Context {
 func flagsPassed() []string {
 	name := ""
 	flag.Visit(func(f *flag.Flag) {
-		name += f.Name + "|"
+		if f.Name != "uid" {
+			name += f.Name + "|"
+		}
 	})
 	// if no flags default to list
 	if name == "" {

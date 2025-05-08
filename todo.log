@@ -250,3 +250,4 @@ time=2025-05-08T14:01:22.347+01:00 level=INFO source=/Users/simon.edmundson/go/s
 time=2025-05-08T14:01:22.347+01:00 level=INFO source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_api.go:126 msg="Serving Template" trace_id=c62419bd-e3c6-43e7-a664-7f7ac3c9823c
 time=2025-05-08T14:01:27.015+01:00 level=INFO source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_api.go:162 msg="Process GET Request" trace_id=3c0311b8-bd8a-45a3-94f9-34e8110d6bd8
 time=2025-05-08T14:01:27.015+01:00 level=INFO source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_api.go:126 msg="Serving Template" trace_id=3c0311b8-bd8a-45a3-94f9-34e8110d6bd8
+time=2025-05-08T14:26:10.597+01:00 level=ERROR source=/Users/simon.edmundson/go/src/tut2/ToDo/todo_cli.go:96 msg="Error Adding to do item to list" details="already exists" user_id=edz197
