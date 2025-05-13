@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	list "github.com/simonedz197/ToDoListStore"
 	"html/template"
 	"net/http"
 	"os"
@@ -14,6 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	_ "net/http/pprof"
+
+	"github.com/google/uuid"
+	list "github.com/simonedz197/ToDoListStore"
 )
 
 type RequestJob struct {
@@ -22,6 +25,10 @@ type RequestJob struct {
 	uid     string
 	done    chan struct{}
 }
+
+type RequetHeaderKey string
+
+const IdRequestHeader = "X-Request-ID"
 
 var Queue = make(chan RequestJob)
 
@@ -32,11 +39,11 @@ type todoPageData struct {
 
 func TracingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestId := r.Header.Get("X-Request-ID")
+		requestId := r.Header.Get(IdRequestHeader)
 		if requestId == "" {
 			requestId = uuid.NewString()
 		}
-		ctx := context.WithValue(r.Context(), "X-Request-ID", requestId)
+		ctx := context.WithValue(r.Context(), IdRequestHeader, requestId)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -50,7 +57,7 @@ func postRequest(job RequestJob) {
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
 		return
 	}
-	data := list.DataStoreJob{job.Request.Context(), job.uid, list.AddData, pb["item"], "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.AddData, KeyValue: pb["item"], AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -63,7 +70,6 @@ func postRequest(job RequestJob) {
 			}
 		}
 	}
-	return
 }
 
 func putRequest(job RequestJob) {
@@ -80,7 +86,7 @@ func putRequest(job RequestJob) {
 		job.Writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	data := list.DataStoreJob{job.Request.Context(), job.uid, list.UpdateData, pb["item"], pb["replacewith"], make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.UpdateData, KeyValue: pb["item"], AltValue: pb["replacewith"], ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -93,7 +99,6 @@ func putRequest(job RequestJob) {
 			}
 		}
 	}
-	return
 }
 
 func deleteRequest(job RequestJob) {
@@ -105,7 +110,7 @@ func deleteRequest(job RequestJob) {
 		job.Writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	data := list.DataStoreJob{job.Request.Context(), job.uid, list.UpdateData, db["item"], "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.UpdateData, KeyValue: db["item"], AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -118,7 +123,6 @@ func deleteRequest(job RequestJob) {
 			}
 		}
 	}
-	return
 }
 
 func serveTemplate(job RequestJob) {
@@ -130,7 +134,7 @@ func serveTemplate(job RequestJob) {
 		PageTitle: "TO DO LIST FOR " + job.uid,
 	}
 
-	data := list.DataStoreJob{job.Request.Context(), job.uid, list.FetchData, "", "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.FetchData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -152,7 +156,6 @@ func serveTemplate(job RequestJob) {
 	if err != nil {
 		list.Logger.ErrorContext(job.Request.Context(), "error executing list template")
 	}
-	return
 }
 
 func ProcessHttpQueue() {
@@ -179,8 +182,10 @@ func ProcessHttpQueue() {
 var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	//extract uid from url
 	uid := "Anonymous User"
-	r.ParseForm()
-	uid = r.FormValue("uid")
+	err := r.ParseForm()
+	if err != nil {
+		uid = r.FormValue("uid")
+	}
 	data := RequestJob{w, r, uid, make(chan struct{})}
 	Queue <- data
 	<-data.done
@@ -188,11 +193,11 @@ var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Reques
 
 func main() {
 	ctx := context.Background()
-
-	go list.ProcessDataJobs()
 	go ProcessHttpQueue()
 
-	data := list.DataStoreJob{ctx, "", list.LoadData, "", "", make(chan list.ReturnChannelData)}
+	go list.ProcessDataJobs()
+
+	data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.LoadData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -202,13 +207,13 @@ func main() {
 		}
 	}
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-c
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -222,7 +227,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	fs := http.FileServer(http.Dir("./static"))
-
+	mux.Handle("/debug/", http.DefaultServeMux)
 	mux.Handle("/todo", TracingMiddleware(ProcessRequest))
 	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
 	fmt.Printf("\nListening on port 8000\n")
