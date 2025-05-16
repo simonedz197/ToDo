@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 	list "github.com/simonedz197/ToDoListStore"
 )
 
+var portFlag = flag.String("port", "", "port to run on e.g. -port 8080")
+
 type RequestJob struct {
 	Writer  http.ResponseWriter
 	Request *http.Request
@@ -28,7 +31,7 @@ type RequestJob struct {
 
 type RequetHeaderKey string
 
-const IdRequestHeader = "X-Request-ID"
+type IdRequestHeader string
 
 var Queue = make(chan RequestJob)
 
@@ -38,22 +41,28 @@ type todoPageData struct {
 }
 
 func TracingMiddleware(next http.Handler) http.Handler {
+	key := IdRequestHeader("X-Request-ID")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestId := r.Header.Get(IdRequestHeader)
+		requestId := r.Header.Get(string(key))
 		if requestId == "" {
 			requestId = uuid.NewString()
 		}
-		ctx := context.WithValue(r.Context(), IdRequestHeader, requestId)
+		ctx := context.WithValue(r.Context(), key, requestId)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func postRequest(job RequestJob) {
-	defer close(job.done)
+	defer func() {
+		close(job.done)
+	}()
+
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		message := fmt.Sprintf("error decoding data data %v", err)
+		LogThis(job.Request.Context(), list.ErrorLog, message)
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -62,7 +71,8 @@ func postRequest(job RequestJob) {
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
 		if returnVal.Err != nil {
-			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			message := fmt.Sprintf("error adding data data %v", err)
+			LogThis(job.Request.Context(), list.ErrorLog, message)
 			if errors.Is(returnVal.Err, list.AlreadyExistsErr) {
 				job.Writer.Write([]byte("Already Exists"))
 			} else {
@@ -77,7 +87,8 @@ func putRequest(job RequestJob) {
 	var pb = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&pb)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		message := fmt.Sprintf("error decoding data data %v", err)
+		LogThis(job.Request.Context(), list.ErrorLog, message)
 		http.Error(job.Writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -91,7 +102,8 @@ func putRequest(job RequestJob) {
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
 		if returnVal.Err != nil {
-			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			message := fmt.Sprintf("error updating data data %v", returnVal.Err)
+			LogThis(job.Request.Context(), list.ErrorLog, message)
 			if errors.Is(returnVal.Err, list.NotFoundErr) {
 				job.Writer.WriteHeader(http.StatusNotFound)
 			} else {
@@ -106,16 +118,18 @@ func deleteRequest(job RequestJob) {
 	var db = make(map[string]string)
 	err := json.NewDecoder(job.Request.Body).Decode(&db)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", err))
+		message := fmt.Sprintf("error decoding data data %v", err)
+		LogThis(job.Request.Context(), list.ErrorLog, message)
 		job.Writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.UpdateData, KeyValue: db["item"], AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: job.Request.Context(), Uid: job.uid, JobType: list.DeleteData, KeyValue: db["item"], AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
 		if returnVal.Err != nil {
-			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			message := fmt.Sprintf("error deleting data %v", returnVal.Err)
+			LogThis(job.Request.Context(), list.ErrorLog, message)
 			if errors.Is(returnVal.Err, list.NotFoundErr) {
 				job.Writer.WriteHeader(http.StatusNotFound)
 			} else {
@@ -127,7 +141,6 @@ func deleteRequest(job RequestJob) {
 
 func serveTemplate(job RequestJob) {
 	defer close(job.done)
-	list.Logger.InfoContext(job.Request.Context(), "Serving Template")
 	lp := filepath.Join("dynamic", "layout.html")
 
 	pageData := todoPageData{
@@ -139,7 +152,8 @@ func serveTemplate(job RequestJob) {
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
 		if returnVal.Err != nil {
-			list.Logger.ErrorContext(job.Request.Context(), fmt.Sprintf("%v", returnVal.Err))
+			message := fmt.Sprintf("error fetching data %v", returnVal.Err)
+			LogThis(job.Request.Context(), list.ErrorLog, message)
 			job.Writer.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -149,21 +163,21 @@ func serveTemplate(job RequestJob) {
 
 	tmpl, err := template.New("layout.html").ParseFiles(lp)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), "error parsing list template")
+		message := fmt.Sprintf("error parsing list template %v", err)
+		LogThis(job.Request.Context(), list.ErrorLog, message)
 		return
 	}
 	err = tmpl.Execute(job.Writer, pageData)
 	if err != nil {
-		list.Logger.ErrorContext(job.Request.Context(), "error executing list template")
+		message := fmt.Sprintf("error executing list template %v", err)
+		LogThis(job.Request.Context(), list.ErrorLog, message)
 	}
 }
 
 func ProcessHttpQueue() {
 	for v := range Queue {
-		// get method and log request
-		requestlog := fmt.Sprintf("Process %s Request", v.Request.Method)
-		list.Logger.InfoContext(v.Request.Context(), requestlog)
-
+		message := fmt.Sprintf("Processing %s Request for %s", v.Request.Method, v.Request.RequestURI)
+		LogThis(v.Request.Context(), list.InfoLog, message)
 		switch strings.ToUpper(v.Request.Method) {
 		case "POST":
 			postRequest(v)
@@ -191,18 +205,29 @@ var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Reques
 	<-data.done
 })
 
+func LogThis(ctx context.Context, level list.LogType, message string) {
+	data := list.LoggerJob{Context: ctx, LogMessage: message, LogType: level}
+	list.LoggerJobQueue <- data
+}
+
 func main() {
+
+	flag.Parse()
+	port := fmt.Sprintf(":%s", *portFlag)
+	filename := fmt.Sprintf("todo%s.txt", port)
+
 	ctx := context.Background()
 	go ProcessHttpQueue()
-
+	go list.ProcessLoggerJobs()
 	go list.ProcessDataJobs()
 
-	data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.LoadData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.LoadData, KeyValue: filename, AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
 		if returnVal.Err != nil {
-			list.Logger.ErrorContext(ctx, "Error Loading todo List", "details", returnVal.Err)
+			message := fmt.Sprintf("Error Loading todo List %v", returnVal.Err)
+			LogThis(ctx, list.ErrorLog, message)
 			return
 		}
 	}
@@ -213,12 +238,14 @@ func main() {
 	go func() {
 		<-c
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
+
+		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: filename, AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
 			if returnVal.Err != nil {
-				list.Logger.ErrorContext(ctx, "Error saving todo List", "details", returnVal.Err)
+				message := fmt.Sprintf("Error saving todo List %v", returnVal.Err)
+				LogThis(ctx, list.ErrorLog, message)
 				return
 			}
 		}
@@ -230,8 +257,9 @@ func main() {
 	mux.Handle("/debug/", http.DefaultServeMux)
 	mux.Handle("/todo", TracingMiddleware(ProcessRequest))
 	mux.Handle("/todo/", http.StripPrefix("/todo/", fs))
-	fmt.Printf("\nListening on port 8000\n")
-	if err := http.ListenAndServe(":8000", mux); err != nil {
+
+	fmt.Printf("\nListening on port %s\n", port)
+	if err := http.ListenAndServe(port, mux); err != nil {
 		fmt.Printf("error running http server: %s\n", err)
 	}
 }
