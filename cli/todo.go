@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/google/uuid"
@@ -15,14 +16,17 @@ var addFlag = flag.String("add", "", "add the todo list entry e.g. -add \"buy mi
 var updateFlag = flag.String("update", "", "update the todo list entry e.g. -update \"buy milk\" \"buy 2 pints of milk\"")
 var deleteFlag = flag.String("delete", "", "delete the todo list entry e.g. -delete \"buy milk\"\nUse delete \"*\" to delete all")
 
+type RequestId string
+type UserId string
+
 // create a dummy context
 func dummyContext() context.Context {
-	request_id := uuid.NewString()
-	user_id := "edz197"
+	request_id := RequestId(uuid.NewString())
+	user_id := UserId("edz197")
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "request_id", request_id)
-	ctx = context.WithValue(ctx, "user_id", user_id)
+	ctx = context.WithValue(ctx, reflect.TypeOf(request_id), request_id)
+	ctx = context.WithValue(ctx, reflect.TypeOf(user_id), user_id)
 	return ctx
 }
 
@@ -46,7 +50,6 @@ func main() {
 	// setup a dummy context
 	// we should get this passed in eventually
 	ctx := dummyContext()
-	uid := "Anonymous User"
 
 	// start the job queue prcessor
 	go list.ProcessDataJobs()
@@ -54,14 +57,13 @@ func main() {
 	flag.Parse()
 
 	flagsSet := flagsPassed()
-	uid = *uidFlag
 
 	if len(flagsSet) > 2 {
 		list.Logger.ErrorContext(ctx, "Error parsing command line", "details", "too many flags passed")
 		return
 	}
 	// load data
-	data := list.DataStoreJob{ctx, "", list.LoadData, "todo.txt", "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.LoadData, KeyValue: "todo.txt", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -74,7 +76,7 @@ func main() {
 	// save data deferred to last thing to do
 	defer func() {
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "todo.txt", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: "todo.txt", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -87,7 +89,7 @@ func main() {
 
 	switch flagsSet[0] {
 	case "add":
-		data := list.DataStoreJob{ctx, uid, list.AddData, *addFlag, "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: *uidFlag, JobType: list.AddData, KeyValue: *addFlag, AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -97,7 +99,7 @@ func main() {
 			}
 		}
 	case "delete":
-		data := list.DataStoreJob{ctx, uid, list.DeleteData, *deleteFlag, "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: *uidFlag, JobType: list.DeleteData, KeyValue: *deleteFlag, AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -110,7 +112,7 @@ func main() {
 		if flag.NArg() == 0 {
 			fmt.Printf("\nyou need to enter the value to update to")
 		}
-		data := list.DataStoreJob{ctx, uid, list.UpdateData, *updateFlag, flag.Arg(0), make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: *uidFlag, JobType: list.UpdateData, KeyValue: *updateFlag, AltValue: flag.Arg(0), ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -120,7 +122,7 @@ func main() {
 			}
 		}
 	}
-	data = list.DataStoreJob{ctx, uid, list.FetchData, "", "", make(chan list.ReturnChannelData)}
+	data = list.DataStoreJob{Context: ctx, Uid: *uidFlag, JobType: list.FetchData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok = <-data.ReturnChannel
 	if ok {

@@ -36,7 +36,7 @@ func main() {
 	go list.ProcessDataJobs()
 
 	// load data
-	data := list.DataStoreJob{ctx, "", list.LoadData, "todo.txt", "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.LoadData, KeyValue: "todo.txt", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -49,7 +49,7 @@ func main() {
 	// save data deferred to last thing to do
 	defer func() {
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "todo.txt", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: "todo.txt", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -61,13 +61,13 @@ func main() {
 	}()
 
 	// monitor ctrl+c
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-c
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{Context: ctx, Uid: "", JobType: list.StoreData, KeyValue: "todo.txt", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -104,7 +104,7 @@ func main() {
 		case "add":
 			fmt.Printf("\nEnter todo Item to %s : ", cmd)
 			item, _ = reader.ReadString('\n')
-			data := list.DataStoreJob{ctx, uid, list.AddData, stripnl(item), "", make(chan list.ReturnChannelData)}
+			data := list.DataStoreJob{Context: ctx, Uid: uid, JobType: list.AddData, KeyValue: stripnl(item), AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 			list.DataJobQueue <- data
 			returnVal, ok := <-data.ReturnChannel
 			if ok {
@@ -116,7 +116,7 @@ func main() {
 		case "del":
 			fmt.Printf("\nEnter todo Item to %s : ", cmd)
 			item, _ = reader.ReadString('\n')
-			data := list.DataStoreJob{ctx, uid, list.DeleteData, stripnl(item), "", make(chan list.ReturnChannelData)}
+			data := list.DataStoreJob{Context: ctx, Uid: uid, JobType: list.DeleteData, KeyValue: stripnl(item), AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 			list.DataJobQueue <- data
 			returnVal, ok := <-data.ReturnChannel
 			if ok {
@@ -130,7 +130,7 @@ func main() {
 			item, _ = reader.ReadString('\n')
 			fmt.Printf("\nnow enter todo item to replace with : ")
 			replaceWith, _ = reader.ReadString('\n')
-			data := list.DataStoreJob{ctx, uid, list.UpdateData, stripnl(item), stripnl(replaceWith), make(chan list.ReturnChannelData)}
+			data := list.DataStoreJob{Context: ctx, Uid: uid, JobType: list.UpdateData, KeyValue: stripnl(item), AltValue: stripnl(replaceWith), ReturnChannel: make(chan list.ReturnChannelData)}
 			list.DataJobQueue <- data
 			returnVal, ok := <-data.ReturnChannel
 			if ok {
@@ -140,7 +140,7 @@ func main() {
 				}
 			}
 		case "lst", "":
-			data = list.DataStoreJob{ctx, uid, list.FetchData, "", "", make(chan list.ReturnChannelData)}
+			data = list.DataStoreJob{Context: ctx, Uid: uid, JobType: list.FetchData, KeyValue: "", AltValue: "", ReturnChannel: make(chan list.ReturnChannelData)}
 			list.DataJobQueue <- data
 			returnVal, ok = <-data.ReturnChannel
 			if ok {
