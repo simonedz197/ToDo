@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	list "github.com/simonedz197/ToDoListStore"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/google/uuid"
+	list "github.com/simonedz197/ToDoListStore"
 )
 
 func dummyContext() context.Context {
@@ -35,7 +36,7 @@ func main() {
 	go list.ProcessDataJobs()
 
 	// load data
-	data := list.DataStoreJob{ctx, "", list.LoadData, "", "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{ctx, "", list.LoadData, "todo.txt", "", make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -48,7 +49,7 @@ func main() {
 	// save data deferred to last thing to do
 	defer func() {
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{ctx, "", list.StoreData, "todo.txt", "", make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
@@ -77,6 +78,8 @@ func main() {
 		}
 		os.Exit(1)
 	}()
+
+	fmt.Printf("\nctrl+c to quit\n\n")
 
 	for {
 		// do this forever until ctrl+c is entered
@@ -151,6 +154,8 @@ func main() {
 				}
 				fmt.Printf("--------------------\n\n")
 			}
+		case "quit":
+			break
 		default:
 			list.Logger.ErrorContext(ctx, "Invalid command")
 			fmt.Printf("\n\ninvalid command\n\n")

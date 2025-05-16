@@ -8,6 +8,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 type ToDoItem struct {
@@ -17,6 +19,7 @@ type ToDoItem struct {
 
 type baseToDoList map[int]string
 
+var mutex sync.Mutex
 var UserToDoList = make(map[string]baseToDoList)
 
 //var mToDoList = make(map[int]string)
@@ -24,12 +27,13 @@ var UserToDoList = make(map[string]baseToDoList)
 var NotFoundErr = fmt.Errorf("not found")
 var AlreadyExistsErr = fmt.Errorf("already exists")
 
-var logFile, err = os.OpenFile("todo.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+var logFilename = fmt.Sprintf("todo-%d.log", time.Now().UnixMicro())
+var logFile, err = os.OpenFile(logFilename, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 var baseHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{AddSource: true})
 var customHandler = &ContextHandler{Handler: baseHandler}
 var Logger = slog.New(customHandler)
 
-func init() {
+func Init() {
 	slog.SetDefault(Logger)
 }
 
@@ -48,6 +52,7 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 type JobType int
+type LogType int
 
 const (
 	LoadData = iota
@@ -56,6 +61,11 @@ const (
 	UpdateData
 	DeleteData
 	StoreData
+)
+
+const (
+	InfoLog  = 1
+	ErrorLog = 2
 )
 
 type ReturnChannelData struct {
@@ -72,28 +82,48 @@ type DataStoreJob struct {
 	ReturnChannel chan ReturnChannelData
 }
 
-var DataJobQueue = make(chan DataStoreJob, 100)
+type LoggerJob struct {
+	LogType    LogType
+	Context    context.Context
+	LogMessage string
+}
+
+var DataJobQueue = make(chan DataStoreJob, 1000)
+var LoggerJobQueue = make(chan LoggerJob, 1000)
 
 func ProcessDataJobs() {
 	for v := range DataJobQueue {
 		switch v.JobType {
 		case LoadData:
-			go LoadToDoList(v)
+			LoadToDoList(v)
 		case FetchData:
-			go FetchToDoList(v)
+			FetchToDoList(v)
 		case AddData:
-			go AddToDoItem(v)
+			AddToDoItem(v)
 		case UpdateData:
-			go UpdateToDoItem(v)
+			UpdateToDoItem(v)
 		case DeleteData:
-			go DeleteToDoItem(v)
+			DeleteToDoItem(v)
 		case StoreData:
 			PersistEntries(v)
 		}
 	}
 }
 
-func getUserList(uid string) map[int]string {
+func ProcessLoggerJobs() {
+	for v := range LoggerJobQueue {
+		switch v.LogType {
+		case InfoLog:
+			Logger.InfoContext(v.Context, v.LogMessage)
+		case ErrorLog:
+			Logger.ErrorContext(v.Context, v.LogMessage)
+		default:
+			Logger.InfoContext(v.Context, v.LogMessage)
+		}
+	}
+}
+
+func GetUserList(uid string) map[int]string {
 	userlist, found := UserToDoList[uid]
 	if !found {
 		userlist = make(map[int]string)
@@ -105,7 +135,7 @@ func LoadToDoList(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelValue := ReturnChannelData{nil, nil}
 
-	file, err := os.OpenFile("todo.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(dataJob.KeyValue, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		Logger.ErrorContext(dataJob.Context, fmt.Sprintf("error %v opening todo file", err))
 		returnChannelValue.Err = err
@@ -117,7 +147,7 @@ func LoadToDoList(dataJob DataStoreJob) {
 			line := strings.Split(s, ",")
 			if len(line) == 2 {
 				uid := line[0]
-				userlist := getUserList(uid)
+				userlist := GetUserList(uid)
 				index := getNewKey(userlist)
 				userlist[index] = line[1]
 				UserToDoList[uid] = userlist
@@ -126,14 +156,13 @@ func LoadToDoList(dataJob DataStoreJob) {
 	}
 	returnChannelValue.List = UserToDoList[dataJob.Uid]
 	dataJob.ReturnChannel <- returnChannelValue
-	return
 }
 
 func AddToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
 
-	userlist := getUserList(dataJob.Uid)
+	userlist := GetUserList(dataJob.Uid)
 
 	idx := itemExists(userlist, dataJob.KeyValue)
 
@@ -148,14 +177,13 @@ func AddToDoItem(dataJob DataStoreJob) {
 	UserToDoList[dataJob.Uid] = userlist
 	returnChannelData.List = UserToDoList[dataJob.Uid]
 	dataJob.ReturnChannel <- returnChannelData
-	return
 }
 
 func UpdateToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
 
-	userlist := getUserList(dataJob.Uid)
+	userlist := GetUserList(dataJob.Uid)
 
 	idx := itemExists(userlist, dataJob.KeyValue)
 	if idx == -1 {
@@ -167,14 +195,13 @@ func UpdateToDoItem(dataJob DataStoreJob) {
 	UserToDoList[dataJob.Uid] = userlist
 	returnChannelData.List = userlist
 	dataJob.ReturnChannel <- returnChannelData
-	return
 }
 
 func DeleteToDoItem(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
 
-	userlist := getUserList(dataJob.Uid)
+	userlist := GetUserList(dataJob.Uid)
 
 	if dataJob.KeyValue == "*" {
 		// remove all items by just recreating the map
@@ -194,7 +221,117 @@ func DeleteToDoItem(dataJob DataStoreJob) {
 	delete(userlist, idx)
 	UserToDoList[dataJob.Uid] = userlist
 	returnChannelData.List = userlist
-	return
+}
+
+func BasicLoadToDoList() error {
+	mutex.Lock()
+
+	defer func() {
+		mutex.Unlock()
+	}()
+
+	file, err := os.OpenFile("todo.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		Logger.ErrorContext(context.Background(), fmt.Sprintf("error %v opening todo file", err))
+		return err
+	}
+	defer file.Close()
+	scan1 := bufio.NewScanner(file)
+	for scan1.Scan() {
+		if s := scan1.Text(); s != "" {
+			line := strings.Split(s, ",")
+			if len(line) == 2 {
+				uid := line[0]
+				userlist := GetUserList(uid)
+				index := getNewKey(userlist)
+				userlist[index] = line[1]
+				UserToDoList[uid] = userlist
+			}
+		}
+	}
+	return nil
+}
+
+func BasicPersistEntries() error {
+	file, err := os.Create("todo.txt")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if len(UserToDoList) > 0 {
+		for i, u := range UserToDoList {
+			for _, v := range SortedMap(u) {
+				if v.Item != "" {
+					_, err := file.WriteString(i + "," + v.Item + "\n")
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func BasicAddToDoItem(uid string, item string) error {
+	mutex.Lock()
+
+	defer func() {
+		mutex.Unlock()
+	}()
+
+	userlist := GetUserList(uid)
+	idx := itemExists(userlist, item)
+	if idx != -1 {
+		return AlreadyExistsErr
+	}
+	idx = getNewKey(userlist)
+	userlist[idx] = item
+	UserToDoList[uid] = userlist
+	return nil
+}
+
+func BasicUpdateToDoItem(uid string, item string, replacewith string) error {
+	mutex.Lock()
+
+	defer func() {
+		mutex.Unlock()
+	}()
+
+	userlist := GetUserList(uid)
+	idx := itemExists(userlist, item)
+	if idx == -1 {
+		return NotFoundErr
+	}
+	userlist[idx] = replacewith
+	UserToDoList[uid] = userlist
+	return nil
+}
+
+func BasicDeleteToDoItem(uid string, item string) error {
+	mutex.Lock()
+
+	defer func() {
+		mutex.Unlock()
+	}()
+
+	userlist := GetUserList(uid)
+
+	if item == "*" {
+		// remove all items by just recreating the map
+		userlist = make(map[int]string)
+		UserToDoList[uid] = userlist
+		return nil
+	}
+
+	idx := itemExists(userlist, item)
+	if idx == -1 {
+		return NotFoundErr
+	}
+
+	delete(userlist, idx)
+	UserToDoList[uid] = userlist
+	return nil
 }
 
 func FetchToDoList(dataJob DataStoreJob) {
@@ -224,7 +361,7 @@ func SortedMap(userlist map[int]string) []ToDoItem {
 func PersistEntries(dataJob DataStoreJob) {
 	defer close(dataJob.ReturnChannel)
 	returnChannelData := ReturnChannelData{nil, nil}
-	file, err := os.Create("todo.txt")
+	file, err := os.Create(dataJob.KeyValue)
 	if err != nil {
 		returnChannelData.Err = err
 		dataJob.ReturnChannel <- returnChannelData
@@ -234,18 +371,19 @@ func PersistEntries(dataJob DataStoreJob) {
 	if len(UserToDoList) > 0 {
 		for i, u := range UserToDoList {
 			for _, v := range SortedMap(u) {
-				_, err := file.WriteString(i + "," + v.Item + "\n")
-				if err != nil {
-					returnChannelData.Err = err
-					dataJob.ReturnChannel <- returnChannelData
-					return
+				if v.Item != "" {
+					_, err := file.WriteString(i + "," + v.Item + "\n")
+					if err != nil {
+						returnChannelData.Err = err
+						dataJob.ReturnChannel <- returnChannelData
+						return
+					}
 				}
 			}
 		}
 	}
 	returnChannelData.List = nil
 	dataJob.ReturnChannel <- returnChannelData
-	return
 }
 
 func getNewKey(userlist map[int]string) int {

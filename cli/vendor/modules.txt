@@ -1,6 +1,6 @@
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/simonedz197/ToDoListStore v0.0.0-20250508140622-9dbc1f09f3c7
+# github.com/simonedz197/ToDoListStore v0.0.0-20250515152709-9afa9a1503a4
 ## explicit; go 1.24.2
 github.com/simonedz197/ToDoListStore

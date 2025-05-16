@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
+
 	"github.com/google/uuid"
 	list "github.com/simonedz197/ToDoListStore"
-	"strings"
 )
 
 var uidFlag = flag.String("uid", "", "owner of the todo list e.g. -uid simon")
@@ -60,7 +61,7 @@ func main() {
 		return
 	}
 	// load data
-	data := list.DataStoreJob{ctx, "", list.LoadData, "", "", make(chan list.ReturnChannelData)}
+	data := list.DataStoreJob{ctx, "", list.LoadData, "todo.txt", "", make(chan list.ReturnChannelData)}
 	list.DataJobQueue <- data
 	returnVal, ok := <-data.ReturnChannel
 	if ok {
@@ -73,7 +74,7 @@ func main() {
 	// save data deferred to last thing to do
 	defer func() {
 		fmt.Printf("\nclosing down...\n")
-		data := list.DataStoreJob{ctx, "", list.StoreData, "", "", make(chan list.ReturnChannelData)}
+		data := list.DataStoreJob{ctx, "", list.StoreData, "todo.txt", "", make(chan list.ReturnChannelData)}
 		list.DataJobQueue <- data
 		returnVal, ok := <-data.ReturnChannel
 		if ok {
