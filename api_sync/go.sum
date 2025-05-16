@@ -1,0 +1,8 @@
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/simonedz197/ToDoListStore v0.0.0-20250512132835-a0c12c5a7724 h1:+KbomnrPbt51wLveE8fuXqmNf0khLjyWlCdskfdO+mc=
+github.com/simonedz197/ToDoListStore v0.0.0-20250512132835-a0c12c5a7724/go.mod h1:VMkpzD4U+Gp8DUDD7Tg6pSezfsIh5C9hkryniwdkLCI=
+github.com/simonedz197/ToDoListStore v0.0.0-20250512142329-448f2d732615 h1:T8X6vMDYGHVm+m98uaNhJjmP5qbbBGiMYLz5zMGx6pc=
+github.com/simonedz197/ToDoListStore v0.0.0-20250512142329-448f2d732615/go.mod h1:VMkpzD4U+Gp8DUDD7Tg6pSezfsIh5C9hkryniwdkLCI=
+github.com/simonedz197/ToDoListStore v0.0.0-20250513074233-b894517cb3da h1:Xwi2f+1WEMi1LCnhRRK7QCBOaa/dZv6uo9+2SYYwlTw=
+github.com/simonedz197/ToDoListStore v0.0.0-20250513074233-b894517cb3da/go.mod h1:VMkpzD4U+Gp8DUDD7Tg6pSezfsIh5C9hkryniwdkLCI=
