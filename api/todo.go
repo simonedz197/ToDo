@@ -197,7 +197,7 @@ var ProcessRequest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Reques
 	//extract uid from url
 	uid := "Anonymous User"
 	err := r.ParseForm()
-	if err != nil {
+	if err == nil {
 		uid = r.FormValue("uid")
 	}
 	data := RequestJob{w, r, uid, make(chan struct{})}
